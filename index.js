@@ -1,22 +1,9 @@
-// ✅ ENV-Variablen laden
 require('dotenv').config();
-
-// ✅ Webserver für Replit & UptimeRobot
 const express = require('express');
-const app = express();
-app.get('/', (req, res) => {
-  res.send('✅ Bot läuft!');
-});
-app.listen(3000, () => {
-  console.log('🌐 Webserver läuft auf Port 3000');
-});
-
-// ✅ Discord-Bot Start
 const {
   Client,
   GatewayIntentBits,
   Partials,
-  SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -26,11 +13,22 @@ const {
   PermissionsBitField
 } = require('discord.js');
 
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot ist online!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Webserver läuft auf Port ${PORT}`);
+});
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent
   ],
   partials: [Partials.Channel],
 });
@@ -71,18 +69,34 @@ client.on('interactionCreate', async interaction => {
 
     await interaction.reply({ content: '✅ Lobby erfolgreich erstellt!', ephemeral: true });
 
-    const msg = await lobbyChannel.send({ embeds: [embed], components: [row] });
+    const rollenPing = '<@&1388296883159437382>'; // Die Rolle wird gepingt
+    const msg = await lobbyChannel.send({
+      content: rollenPing,
+      embeds: [embed],
+      components: [row]
+    });
 
     const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30 * 60 * 1000 });
 
-    let accepted = false;
+    let angenommen = false;
 
     collector.on('collect', async i => {
-      if (i.customId === 'annehmen' && !accepted) {
-        accepted = true;
+      if (i.customId === 'annehmen') {
+        if (angenommen) {
+          return i.reply({ content: '❌ Diese Lobby wurde bereits angenommen.', ephemeral: true });
+        }
+        angenommen = true;
+
+        await i.deferUpdate();
+
+        embed.setTitle('🎮 Lobby angenommen')
+          .setDescription(`<@${interaction.user.id}> vs <@${i.user.id}>`)
+          .setFooter({ text: 'Das Ticket wurde erstellt.' });
+
+        await msg.edit({ embeds: [embed], components: [] });
 
         const category = interaction.guild.channels.cache.find(c => c.name.toLowerCase() === 'lobby suche' && c.type === ChannelType.GuildCategory);
-        if (!category) return i.reply({ content: '❌ Kategorie "Lobby Suche" nicht gefunden.', ephemeral: true });
+        if (!category) return i.followUp({ content: '❌ Kategorie "Lobby Suche" nicht gefunden.', ephemeral: true });
 
         const ticketChannel = await interaction.guild.channels.create({
           name: `ticket-${interaction.user.username}`,
@@ -112,7 +126,7 @@ client.on('interactionCreate', async interaction => {
         const closeRow = new ActionRowBuilder().addComponents(closeBtn);
 
         await ticketChannel.send({
-          content: `🎮 **${interaction.user.username}** vs **${i.user.username}**\nWillkommen <@${interaction.user.id}> & <@${i.user.id}>!\nNutze den Button unten, um das Ticket zu schließen.`,
+          content: `Willkommen <@${interaction.user.id}> & <@${i.user.id}>!\nNutze den Button unten, um das Ticket zu schließen.`,
           components: [closeRow],
         });
 
@@ -134,17 +148,6 @@ client.on('interactionCreate', async interaction => {
             ticketChannel.delete().catch(() => {});
           }
         });
-
-        // Button deaktivieren
-        const disabledRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('annehmen')
-            .setLabel('✅ Bereits angenommen')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true),
-        );
-
-        await msg.edit({ components: [disabledRow] });
       }
     });
   }
